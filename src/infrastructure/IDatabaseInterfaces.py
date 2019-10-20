@@ -1,5 +1,14 @@
 from abc import ABC, abstractmethod
 
+class IDatabase(ABC):
+    @abstractmethod
+    def ClearCSV(self, file_path):
+        """Clear the CSV"""
+    
+    @abstractmethod
+    def ClearAllCSV(self):
+        """Clear all CSV"""
+
 class IDatabaseBRM(ABC):
     @abstractmethod
     def GetBookCovers(self):
@@ -22,14 +31,6 @@ class IDatabaseFRM(ABC):
     @abstractmethod    
     def AddModel(self, model):
         """Add model"""
-        
-    @abstractmethod    
-    def GetNewUserID(self):
-        """Get new user ID"""
-        
-    # @abstractmethod    
-    # def GetNewUserID(self, file):
-        # """Get new user ID"""
         
 class IDatabaseGUI(ABC):
     @abstractmethod

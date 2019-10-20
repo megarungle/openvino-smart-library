@@ -16,15 +16,6 @@ from Entities.Model import Model
 # При записи любых данных в файлы БД вручную обязательно в конце сделать
 # перевод строки на новую.
 
-path = 'infrastructure/Database/'
-
-# внешняя функция для подсчёта строк в файле
-def NumOfLines(file):
-    lines = 0
-    for line in open(file):
-        lines = lines + 1
-    return lines
-
 class CSVDatabase(IDatabaseBRM, IDatabaseAuthService,
                   IDatabaseFRM, IDatabaseGUI):
     # dbRootDir = 'infrastructure/Database/'
@@ -35,9 +26,11 @@ class CSVDatabase(IDatabaseBRM, IDatabaseAuthService,
         self.fAuthors = self.dbRootDir + 'Books/Authors.csv'
         self.fAuthorship = self.dbRootDir + 'Books/Authorship.csv'
         self.fUsers = self.dbRootDir + 'Users/Users.csv'
+        self.fUserModel = self.dbRootDir + 'Users/UserModel.csv'
         self.fUserRole = self.dbRootDir + 'Users/UserRole.csv'
         self.fRoles = self.dbRootDir + 'Users/Roles.csv'
         self.fModels = self.dbRootDir + 'Users/Models.csv'
+        self.fReaders = self.dbRootDir + 'Readers.csv'
         #
         self.dUser = {'user_id': 'user_id', 'phone': 'phone',
                          'first_name': 'first_name', 'last_name': 'last_name',
@@ -51,29 +44,34 @@ class CSVDatabase(IDatabaseBRM, IDatabaseAuthService,
         self.dRole = {'role_id': 'role_id', 'description': 'description'}
         self.dModel = {'model_id': 'model_id', 'file_path': 'file_path',
                        'name_model': 'name_model'}
-        #
-        self.fieldnamesUser = [self.dUser['user_id'], self.dUser['phone'],
-                              self.dUser['first_name'],
-                              self.dUser['last_name'],
-                              self.dUser['middle_name']]
-        self.fieldnamesModel = [self.dModel['model_id'],
-                                self.dModel['file_path'],
-                                self.dModel['name_model']]
-        
-    # def GetNewUserID(self, file):
-        # lines = 0
-        # for line in open(file):
-            # lines = lines + 1
-        # return lines
+        self.dReader = {'user_id': 'user_id', 'book_id': 'book_id',
+                        'borrow_date': 'borrow_date', 'return_date': 'return_date'}
     
-    def GetNewUserID(self):
-        newID = str(datetime.now())
-        newID = newID.replace('-', '')
-        newID = newID.replace(' ', '')
-        newID = newID.replace(':', '')
-        newID = newID.replace('.', '')
-        return newID
+    # Данную функцию нужно вынести за пределы этого файла. Функция генерирует
+    # ID для новых книг и пользователей.
+    # def GetNewID(self):
+        # newID = str(datetime.now())
+        # newID = newID.replace('-', '')
+        # newID = newID.replace(' ', '')
+        # newID = newID.replace(':', '')
+        # newID = newID.replace('.', '')
+        # return newID
         
+    def ClearCSV(self, file_path):
+        fileR = open(file_path, newline = '')
+        header = fileR.readline()
+        fileR.close()
+        fileOverW = open(file_path, 'w', newline = '')
+        fileOverW.write(header)
+        fileOverW.close()
+        
+    def ClearAllCSV(self):
+        files = [self.fAuthors, self.fAuthorship, self.fBooks, self.fModels,
+                 self.fRoles, self.fUserModel, self.fUserRole,
+                 self.fUsers, self.fReaders]
+        for f in files:
+            self.ClearCSV(f)
+    
     def GetBookCovers(self):
         fileBooksR = open(self.fBooks, newline = '')
         fileAuthorsR = open(self.fAuthors, newline = '')
@@ -121,6 +119,9 @@ class CSVDatabase(IDatabaseBRM, IDatabaseAuthService,
         return book
     
     def AddUser(self, user):
+        fieldnamesUser = [self.dUser['user_id'], self.dUser['phone'],
+                               self.dUser['first_name'], self.dUser['last_name'],
+                               self.dUser['middle_name']]
         fileUsersR = open(self.fUsers, newline = '')
         fileUsersW = open(self.fUsers, 'a', newline = '')
         # 'a' - дозапись в файл, 'w' - перезапись файла
@@ -135,7 +136,7 @@ class CSVDatabase(IDatabaseBRM, IDatabaseAuthService,
                 fileUsersW.close()
                 raise Exception('This user is already registered!')
         #
-        writer = csv.DictWriter(fileUsersW, fieldnames = self.fieldnamesUser,
+        writer = csv.DictWriter(fileUsersW, fieldnames = fieldnamesUser,
                                 delimiter = ',')
         writer.writerow({self.dUser['user_id']: user.user_id,
                          self.dUser['phone']: user.phone,
@@ -194,8 +195,10 @@ class CSVDatabase(IDatabaseBRM, IDatabaseAuthService,
         raise Exception('This model does not exist!')
     
     def AddModel(self, model):
+        fieldnamesModel = [self.dModel['model_id'], self.dModel['file_path'],
+                           self.dModel['name_model']]
         fileModelsW = open(self.fModels, 'a', newline = '')
-        writer = csv.DictWriter(fileModelsW, fieldnames = self.fieldnamesModel,
+        writer = csv.DictWriter(fileModelsW, fieldnames = fieldnamesModel,
                                 delimiter = ',')
         writer.writerow({self.dModel['model_id']: model.model_id,
                          self.dModel['file_path']: model.file_path,
@@ -203,199 +206,211 @@ class CSVDatabase(IDatabaseBRM, IDatabaseAuthService,
         #
         fileModelsW.close()
         
-    ###########
-    
     def AddBook(self, book):
-        FileBooksR = open(path + "Books/Books.csv", newline = '')
-        # если такая книга уже есть, то вернуть -1
-        readerBooks = csv.DictReader(FileBooksR, delimiter = ',')
+        fileBooksR = open(self.fBooks, newline = '')
+        # если такая книга уже есть, то raise
+        readerBooks = csv.DictReader(fileBooksR, delimiter = ',')
         for line in readerBooks:
             # file_path не сравниваю, т.к. могут быть 2 разных фото одной книги
-            if ((book.title == line["title"]) and (book.year == line["year"]) and (book.publisher == line["publisher"])):
-                FileBooksR.close()
-                return -1
-        FileBooksW = open(path + "Books/Books.csv", "a", newline = '')
-        FileAuthorshipW = open(path + "Books/Authorship.csv", "a", newline = '')
-        FileAuthorsR = open(path + "Books/Authors.csv", newline = '')
-        FileAuthorsW = open(path + "Books/Authors.csv", "a", newline = '')
-        new_book_id = NumOfLines(path + "Books/Books.csv") # id новой книги = числу строк в файле Books.csv
+            if ((book.title == line[self.dBook['title']]) and
+                (book.year == line[self.dBook['year']]) and
+                (book.publisher == line[self.dBook['publisher']])):
+                fileBooksR.close()
+                raise Exception('This book is already added!')
+        fileBooksW = open(self.fBooks, 'a', newline = '')
+        fileAuthorshipW = open(self.fAuthorship, 'a', newline = '')
+        fileAuthorsR = open(self.fAuthors, newline = '')
+        fileAuthorsW = open(self.fAuthors, 'a', newline = '')
         # в таблицу книг дописываю одну новую:
-        fieldnamesBooks = ['book_id', 'file_path', 'title', 'year', 'publisher']
-        writerBooks = csv.DictWriter(FileBooksW, fieldnames = fieldnamesBooks, delimiter = ',')
-        writerBooks.writerow({'book_id': new_book_id, 'file_path': book.file_path, 'title': book.title, 'year': book.year, 'publisher': book.publisher})
+        fieldnamesBooks = [self.dBook['book_id'], self.dBook['file_path'],
+                           self.dBook['title'], self.dBook['year'],
+                           self.dBook['publisher']]
+        writerBooks = csv.DictWriter(fileBooksW, fieldnames = fieldnamesBooks,
+                                     delimiter = ',')
+        writerBooks.writerow({self.dBook['book_id']: book.book_id,
+                              self.dBook['file_path']: book.file_path,
+                              self.dBook['title']: book.title,
+                              self.dBook['year']: book.year,
+                              self.dBook['publisher']: book.publisher})
         # 
-        readerAuthors = csv.DictReader(FileAuthorsR, delimiter = ',')
-        fieldnamesAuthors = ['author_id', 'first_name', 'last_name', 'middle_name']
-        writerAuthors = csv.DictWriter(FileAuthorsW, fieldnames = fieldnamesAuthors, delimiter = ',')
-        fieldnamesAuthorship = ['book_id', 'author_id']
-        writerAuthorship = csv.DictWriter(FileAuthorshipW, fieldnames = fieldnamesAuthorship, delimiter = ',')
+        readerAuthors = csv.DictReader(fileAuthorsR, delimiter = ',')
+        fieldnamesAuthors = [self.dAuthor['author_id'], self.dAuthor['first_name'],
+                             self.dAuthor['last_name'], self.dAuthor['middle_name']]
+        writerAuthors = csv.DictWriter(fileAuthorsW,
+                                       fieldnames = fieldnamesAuthors,
+                                       delimiter = ',')
+        fieldnamesAuthorship = [self.dAuthorship['book_id'],
+                                self.dAuthorship['author_id']]
+        writerAuthorship = csv.DictWriter(fileAuthorshipW,
+                                          fieldnames = fieldnamesAuthorship,
+                                          delimiter = ',')
         for aut in book.authors:
             new_author_id = 0
             for line in readerAuthors:
                 # проверяю, есть ли в файле с Authors.csv, автор, который написал книгу, которую мы добавляем
-                if ((aut.first_name == line["first_name"]) and (aut.last_name == line["last_name"]) and (aut.middle_name == line["middle_name"])):
+                if ((aut.first_name == line[self.dAuthor['first_name']]) and
+                    (aut.last_name == line[self.dAuthor['last_name']]) and
+                    (aut.middle_name == line[self.dAuthor['middle_name']])):
                     # если да, то его id будет ассоциироваться с id книги, которую мы добавляем
-                    new_author_id = line["author_id"]
-            # если нет, то вычислим новый author_id и занесём автора в базу
+                    new_author_id = line[self.dAuthor['author_id']]
+            # если нет, то занесём автора в базу
             if (new_author_id == 0):
-                new_author_id = NumOfLines(path + "Books/Authors.csv")
-                writerAuthors.writerow({'author_id': new_author_id, 'first_name': aut.first_name, 'last_name': aut.last_name, 'middle_name': aut.middle_name})
-            writerAuthorship.writerow({'book_id': new_book_id, 'author_id': new_author_id})
-            FileAuthorsR.seek(0)
-            FileAuthorsW.seek(0)
-        
-        FileBooksR.close()
-        FileBooksW.close()
-        FileAuthorsR.close()
-        FileAuthorsW.close()
-        FileAuthorshipW.close()
-        return new_book_id
-    
+                writerAuthors.writerow({self.dAuthor['author_id']: aut.author_id,
+                                        self.dAuthor['first_name']: aut.first_name,
+                                        self.dAuthor['last_name']: aut.last_name,
+                                        self.dAuthor['middle_name']: aut.middle_name})
+            writerAuthorship.writerow({self.dBook['book_id']: book.book_id,
+                                       self.dAuthor['author_id']: aut.author_id})
+            fileAuthorsR.seek(0)
+            fileAuthorsW.seek(0)
+        #
+        fileBooksR.close()
+        fileBooksW.close()
+        fileAuthorsR.close()
+        fileAuthorsW.close()
+        fileAuthorshipW.close()
     
     def GetAllUsers(self):
-        FileUsersR = open(path + "Users/Users.csv", newline = '')
-        reader = csv.DictReader(FileUsersR, delimiter = ',')
+        fileUsersR = open(self.fUsers, newline = '')
+        reader = csv.DictReader(fileUsersR, delimiter = ',')
         user = []
         for line in reader:
-            user.append(User(line["user_id"], line["phone"], line["first_name"], line["last_name"], line["middle_name"]))
-        
-        FileUsersR.close()
+            user.append(User(line[self.dUser['user_id']],
+                             line[self.dUser['phone']],
+                             line[self.dUser['first_name']],
+                             line[self.dUser['last_name']],
+                             line[self.dUser['middle_name']]))
+        #
+        fileUsersR.close()
         return user
-    
     
     def GetAllBooks(self):
         return self.GetBookCovers()
     
     def GetBorrowedBooks(self):
-        # HELP!
-        # пытался реализовать все циклы по строкам файлов при помощи enumerate в целях экономии времени работы методов, но возникают проблемы с возвратом указателя в начало файла
-        FileBooksR = open(path + "Books/Books.csv", newline = '')
-        FileUsersR = open(path + "Users/Users.csv", newline = '')
-        FileAuthorsR = open(path + "Books/Authors.csv", newline = '')
-        FileAuthorshipR = open(path + "Books/Authorship.csv", newline = '')
-        FileReadersR = open(path + "Readers.csv", newline = '')
+        fileBooksR = open(self.fBooks, newline = '')
+        fileUsersR = open(self.fUsers, newline = '')
+        fileAuthorsR = open(self.fAuthors, newline = '')
+        fileAuthorshipR = open(self.fAuthorship, newline = '')
+        fileReadersR = open(self.fReaders, newline = '')
         user = []
         book = []
         date1 = []
         date2 = []
         authors = []
-        readerReaders = csv.DictReader(FileReadersR, delimiter = ',')
-        readerUsers = csv.DictReader(FileUsersR, delimiter = ',')
-        readerBooks = csv.DictReader(FileBooksR, delimiter = ',')
-        readerAuthorship = csv.DictReader(FileAuthorshipR, delimiter = ',')
-        readerAuthors = csv.DictReader(FileAuthorsR, delimiter = ',')
+        readerReaders = csv.DictReader(fileReadersR, delimiter = ',')
+        readerUsers = csv.DictReader(fileUsersR, delimiter = ',')
+        readerBooks = csv.DictReader(fileBooksR, delimiter = ',')
+        readerAuthorship = csv.DictReader(fileAuthorshipR, delimiter = ',')
+        readerAuthors = csv.DictReader(fileAuthorsR, delimiter = ',')
         # захожу в цикл по строкам файла Readers.csv
         for lineReaders in readerReaders:
-            # захожу в цикл по строкам файла Books.csv с фиксированным значением user_id
-            FileUsersR.seek(0) # возвращаю указатель в начало файла
+            # захожу в цикл по строкам файла Books.csv с фиксированным
+            # значением user_id
+            fileUsersR.seek(0) # возвращаю указатель в начало файла
             for lineUsers in readerUsers:
                 # нахожу нужного пользователя и добавляю его данные в user[]
-                if (lineUsers["user_id"] == lineReaders["user_id"]):
-                    user.append(User(lineUsers["user_id"], lineUsers["phone"], lineUsers["first_name"], lineUsers["last_name"], lineUsers["middle_name"]))
+                if (lineUsers[self.dUser['user_id']] ==
+                    lineReaders[self.dReader['user_id']]):
+                    user.append(User(lineUsers[self.dUser['user_id']],
+                                     lineUsers[self.dUser['phone']],
+                                     lineUsers[self.dUser['first_name']],
+                                     lineUsers[self.dUser['last_name']],
+                                     lineUsers[self.dUser['middle_name']]))
                     break
-            # захожу в цикл по строкам файла Authorship.csv с фиксированным значением book_id
-            FileAuthorshipR.seek(0) # возвращаю указатель в начало файла
+            # захожу в цикл по строкам файла Authorship.csv с фиксированным
+            # значением book_id
+            fileAuthorshipR.seek(0) # возвращаю указатель в начало файла
             for lineAuthorship in readerAuthorship:
                 # нахожу нужные(ый) author_id
-                if (lineAuthorship["book_id"] == lineReaders["book_id"]):
-                    # захожу в цикл по строкам файла Authors.csv с фиксированным значением author_id
-                    FileAuthorsR.seek(0) # возвращаю указатель в начало файла
+                if (lineAuthorship[self.dAuthorship['book_id']] ==
+                    lineReaders[self.dReader['book_id']]):
+                    # захожу в цикл по строкам файла Authors.csv с
+                    # фиксированным значением author_id
+                    fileAuthorsR.seek(0) # возвращаю указатель в начало файла
                     for lineAuthors in readerAuthors:
-                        # имея author_id нахожу нужного автора и добавляю его в authors[]
-                        if (lineAuthorship["author_id"] == lineAuthors["author_id"]):
-                            authors.append(Author(lineAuthors["author_id"], lineAuthors["first_name"], lineAuthors["last_name"], lineAuthors["middle_name"]))
+                        # имея author_id нахожу нужного автора и добавляю его
+                        # в authors[]
+                        if (lineAuthorship[self.dAuthorship['author_id']] ==
+                            lineAuthors[self.dAuthor['author_id']]):
+                            authors.append(Author(lineAuthors[self.dAuthor['author_id']],
+                                                  lineAuthors[self.dAuthor['first_name']],
+                                                  lineAuthors[self.dAuthor['last_name']],
+                                                  lineAuthors[self.dAuthor['middle_name']]))
                             break
             # добавляю нужную дату взятия книги в date1[]
-            date1.append(lineReaders["borrow_date"])
+            date1.append(lineReaders[self.dReader['borrow_date']])
             # добавляю нужную дату сдачи книги в date2[]
-            date2.append(lineReaders["return_date"])
+            date2.append(lineReaders[self.dReader['return_date']])
             #
-            # захожу в цикл по строкам файла Books.csv с фиксированным значением book_id
-            FileBooksR.seek(0) # возвращаю указатель в начало файла
+            # захожу в цикл по строкам файла Books.csv с фиксированным
+            # значением book_id
+            fileBooksR.seek(0) # возвращаю указатель в начало файла
             for lineBooks in readerBooks:
                 # нахожу нужную книгу
-                if (lineBooks["book_id"] ==  lineReaders["book_id"]):
+                if (lineBooks[self.dBook['book_id']] ==
+                    lineReaders[self.dReader['book_id']]):
                     # добавляю её в book[]
-                    new_list = authors.copy() # новый список для устранения проблем с памятью 
-                    book.append(Book(lineBooks["book_id"], lineBooks["file_path"], lineBooks["title"], lineBooks["year"], lineBooks["publisher"], new_list))
+                    book.append(Book(lineBooks[self.dBook['book_id']],
+                                     lineBooks[self.dBook['file_path']],
+                                     lineBooks[self.dBook['title']],
+                                     lineBooks[self.dBook['year']],
+                                     lineBooks[self.dBook['publisher']],
+                                     authors.copy()))
                     authors.clear()
                     break
-                
-        FileUsersR.close()
-        FileBooksR.close()
-        FileAuthorsR.close()
-        FileAuthorshipR.close()
-        FileReadersR.close()
+        #
+        fileUsersR.close()
+        fileBooksR.close()
+        fileAuthorsR.close()
+        fileAuthorshipR.close()
+        fileReadersR.close()
         return (book, date1, date2, user) # tuple()
-        
-    def ChangeBookStatus(self, user_id, book_id):
-        status = 1
-        borrowDate = ""
-        FileReadersR = open(path + "Readers.csv", "r", newline = '')
+
+    def ChangeBookStatus(self, user_id, book_id, status):
+        borrowDate = ''
+        fileReadersR = open(self.fReaders, 'r', newline = '')
         # статус = 1 - взять книгу
         # статус = 2 - сдать книгу
         # return_date == -1 - книга не сдана
-        reader = csv.DictReader(FileReadersR, delimiter = ',')
+        reader = csv.DictReader(fileReadersR, delimiter = ',')
         for line in reader:
-                # нахожу нужную дату по id книги и пользователя
-                if (line["book_id"] == str(book_id) and line["user_id"] == str(user_id)):
-                    # если эту книгу этот пользователь уже брал, то оформим новую запись
-                    if (line["return_date"] != '-1'):
-                        continue
-                    # если же он книгу не взял, но не вернул, то сдаем книгу
-                    borrowDate = line["borrow_date"]
-                    status = 2
-                    break
+            # нахожу нужную дату по id книги и пользователя
+            if (line[self.dReader['book_id']] == str(book_id) and
+                line[self.dReader['user_id']] == str(user_id)):
+                # если эту книгу этот пользователь уже брал и возвращал
+                if (line[self.dReader['return_date']] != '-1'):
+                    continue
+                # если же он книгу взял, но не вернул
+                borrowDate = line[self.dReader['borrow_date']]
         if (status == 1):
-            FileReadersW = open(path + "Readers.csv", "a", newline = '')
-            fieldnames = ['user_id', 'book_id', 'borrow_date', 'return_date']
-            writer = csv.DictWriter(FileReadersW, fieldnames = fieldnames, delimiter = ',')
-            writer.writerow({'user_id': user_id, 'book_id': book_id, 'borrow_date': datetime.strftime(datetime.now(), "%d.%m.%Y"), 'return_date': "-1"})
-            FileReadersW.close()
+            fileReadersW = open(self.fReaders, 'a', newline = '')
+            fieldnames = [self.dReader['user_id'], self.dReader['book_id'],
+                          self.dReader['borrow_date'],
+                          self.dReader['return_date']]
+            writer = csv.DictWriter(fileReadersW, fieldnames = fieldnames,
+                                    delimiter = ',')
+            writer.writerow({self.dReader['user_id']: user_id,
+                             self.dReader['book_id']: book_id,
+                             self.dReader['borrow_date']: datetime.strftime(datetime.now(), '%d.%m.%Y'),
+                             self.dReader['return_date']: '-1'})
+            fileReadersW.close()
         if (status == 2):
+            fileReadersR.seek(0)
+            lines = fileReadersR.readlines()
+            fileReadersOverW = open(self.fReaders, 'w', newline = '')
             s = str(user_id) + ',' + str(book_id) + ',' + borrowDate + ','
-            FileReadersR.seek(0)
-            lines = FileReadersR.readlines()
-            FileReadersOverW = open(path + "Readers.csv", "w", newline = '')
             for line in lines:
                 line = line.strip()
                 if line == s + '-1':
-                    FileReadersOverW.write(s + datetime.strftime(datetime.now(), "%d.%m.%Y") + '\r' + '\n')
+                    fileReadersOverW.write(s +
+                                           datetime.strftime(datetime.now(), '%d.%m.%Y') +
+                                           '\r' + '\n')
                 else:
-                    FileReadersOverW.write(line + '\r' + '\n')
-            FileReadersOverW.close()
-            
-        FileReadersR.close()
+                    fileReadersOverW.write(line + '\r' + '\n')
+            fileReadersOverW.close()
+        #
+        fileReadersR.close()
 
-if __name__ == "__main__":
-    CSV = CSVDatabase()
-    
-    # TEST GetAllBooks()
-    # book = CSV.GetAllBooks()
-    # for b in book:
-    #     b._print()
-    
-    # TEST GetBookCovers()
-    # book = CSV.GetBookCovers()
-    # for b in book:
-    #     b._print()
-    
-    # TEST AddUser()
-    # user = User(CSV.GetNewUserID(), 10, 'A', 'B', 'C')
-    # CSV.AddUser(user)
-    
-    # TEST GetUser()
-    # user = CSV.GetUser(2)[0]
-    # role = CSV.GetUser(2)[1]
-    # user._print()
-    # role._print()
-    
-    # TEST GetTrainedModel()
-    # line = CSV.GetTrainedModel('name_model2')
-    # print(line)
-    # line = CSV.GetTrainedModel('name')
-    
-    # TEST AddModel()
-    # model = Model(1000, 'new_model_path', 'new_model_name')
-    # CSV.AddModel(model)
+if __name__ == '__main__':
     """main"""
